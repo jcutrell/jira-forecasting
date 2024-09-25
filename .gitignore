@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+
+bin/
+lib/
+share/
+config.ini
+pyvenv.cfg
+
+# Distribution / packaging
+.eggs/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Environments
+.env
+.venv
+venv/
+ENV/
+env/
+
+# IDE-specific files
+.idea/
+.vscode/
+
+# Jupyter Notebook files
+.ipynb_checkpoints/
+
+# Unit test / coverage reports
+*.coverage
+.tox/
+htmlcov/
+.pytest_cache/
