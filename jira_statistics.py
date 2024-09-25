@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict
+from typing import List, Dict, Set
 from collections import defaultdict
 from datetime import datetime, timedelta
 import pandas as pd
@@ -11,9 +11,8 @@ class JiraStatistics:
     def __init__(self, jira_manager):
         self.jira_manager = jira_manager
 
-    def get_filter_statistics(self, filter_id: str, use_story_points: bool = False) -> Dict:
-        logger.info(f"Fetching statistics for filter ID: {filter_id}")
-        tickets = self.jira_manager.get_ticket_data(filter_id)
+
+    def get_filter_statistics(self, tickets, use_story_points: bool = False, selected_statuses: Set[str] = None) -> Dict:
         if use_story_points:
             tickets = self.jira_manager.backfill_story_points(tickets)
         
@@ -23,7 +22,8 @@ class JiraStatistics:
 
         stats = {
             "cycle_time": self.calculate_cycle_time_stats(tickets),
-            "contributors": self.analyze_contributors(tickets, use_story_points),
+            "combined_cycle_time": self.calculate_combined_cycle_time_stats(tickets, selected_statuses) if selected_statuses else None,
+            "contributors": self.analyze_contributors(tickets, use_story_points, selected_statuses),
             "ticket_range": self.get_ticket_range(tickets),
             "story_points": self.analyze_story_points(tickets),
             "correlations": self.get_correlations(tickets),
@@ -34,26 +34,68 @@ class JiraStatistics:
 
         return stats
 
+    def calculate_combined_cycle_time_stats(self, tickets: List[Dict], selected_statuses: Set[str]) -> Dict:
+        logger.info(f"Calculating combined cycle time statistics for statuses: {', '.join(selected_statuses)}")
+        combined_times = []
+        
+        for ticket in tickets:
+            combined_time = self.jira_manager.calculate_combined_cycle_time(ticket['cycle_times'], selected_statuses)
+            combined_times.append(combined_time.total_seconds())
+
+        return {
+            "average": timedelta(seconds=np.mean(combined_times)),
+            "median": timedelta(seconds=np.median(combined_times)),
+            "std_dev": timedelta(seconds=np.std(combined_times)),
+            "min": timedelta(seconds=np.min(combined_times)),
+            "max": timedelta(seconds=np.max(combined_times))
+        }
+    
+
     def calculate_cycle_time_stats(self, tickets: List[Dict]) -> Dict:
         logger.info("Calculating cycle time statistics")
         all_cycle_times = defaultdict(list)
         
         for ticket in tickets:
             for status, time in ticket['cycle_times'].items():
-                all_cycle_times[status].append(time.total_seconds())
+                all_cycle_times[status].append((time.total_seconds(), ticket['key']))
 
         cycle_time_stats = {}
         for status, times in all_cycle_times.items():
+            times_seconds = [t[0] for t in times]
             cycle_time_stats[status] = {
-                "average": timedelta(seconds=np.mean(times)),
-                "median": timedelta(seconds=np.median(times)),
-                "std_dev": timedelta(seconds=np.std(times)),
-                "min": timedelta(seconds=np.min(times)),
-                "max": timedelta(seconds=np.max(times))
+                "average": timedelta(seconds=np.mean(times_seconds)),
+                "median": timedelta(seconds=np.median(times_seconds)),
+                "std_dev": timedelta(seconds=np.std(times_seconds)),
+                "min": timedelta(seconds=min(times_seconds)),
+                "min_ticket": min(times, key=lambda x: x[0])[1],
+                "max": timedelta(seconds=max(times_seconds)),
+                "max_ticket": max(times, key=lambda x: x[0])[1]
             }
 
         return cycle_time_stats
 
+    def get_ticket_range(self, tickets: List[Dict]) -> Dict:
+        logger.info("Determining first and last completed tickets")
+        completed_tickets = [t for t in tickets if t['completed_date']]
+        
+        if not completed_tickets:
+            logger.warning("No completed tickets found.")
+            return {}
+
+        first_ticket = min(completed_tickets, key=lambda x: x['completed_date'])
+        last_ticket = max(completed_tickets, key=lambda x: x['completed_date'])
+
+        return {
+            "first_ticket": {
+                "key": first_ticket['key'],
+                "completion_date": first_ticket['completed_date']
+            },
+            "last_ticket": {
+                "key": last_ticket['key'],
+                "completion_date": last_ticket['completed_date']
+            }
+        }
+    
     def analyze_backlog_to_progress(self, tickets: List[Dict]) -> Dict:
         logger.info("Analyzing backlog to progress transitions")
         transitions = [ticket['backlog_to_progress'] for ticket in tickets]
@@ -64,7 +106,7 @@ class JiraStatistics:
             "average_transitions": np.mean(transitions)
         }
 
-    def analyze_contributors(self, tickets: List[Dict], use_story_points: bool) -> Dict:
+    def analyze_contributors(self, tickets: List[Dict], use_story_points: bool, selected_statuses: Set[str] = None) -> Dict:
         logger.info("Analyzing contributor statistics")
         contributors = defaultdict(lambda: {"count": 0, "points": 0, "cycle_times": defaultdict(list), "first_completion": None, "last_completion": None})
         
@@ -82,9 +124,14 @@ class JiraStatistics:
                     contributors[assignee]['first_completion'] = completion_date
                 if contributors[assignee]['last_completion'] is None or completion_date > contributors[assignee]['last_completion']:
                     contributors[assignee]['last_completion'] = completion_date
+                if selected_statuses:
+                    combined_time = self.jira_manager.calculate_combined_cycle_time(ticket['cycle_times'], selected_statuses)
+                    contributors[assignee]['combined_cycle_times'].append(combined_time)
 
         for assignee, data in contributors.items():
             data['avg_cycle_times'] = {status: sum(times, timedelta()) / len(times) if times else timedelta(0) for status, times in data['cycle_times'].items()}
+            if selected_statuses:
+                data['avg_combined_cycle_time'] = sum(data['combined_cycle_times'], timedelta()) / len(data['combined_cycle_times']) if data['combined_cycle_times'] else timedelta(0)
 
         return {
             "count": len(contributors),
@@ -190,6 +237,7 @@ def print_statistics(stats: Dict, use_story_points: bool):
     print("\n=== Jira Filter Statistics ===\n")
 
     # Cycle Time Statistics
+
     if 'cycle_time' in stats and stats['cycle_time']:
         print("Cycle Time Statistics:")
         for status, cycle_stats in stats['cycle_time'].items():
@@ -197,12 +245,23 @@ def print_statistics(stats: Dict, use_story_points: bool):
             print(f"    Average: {format_timedelta(cycle_stats['average'])}")
             print(f"    Median: {format_timedelta(cycle_stats['median'])}")
             print(f"    Standard Deviation: {format_timedelta(cycle_stats['std_dev'])}")
-            print(f"    Minimum: {format_timedelta(cycle_stats['min'])}")
-            print(f"    Maximum: {format_timedelta(cycle_stats['max'])}")
-    else:
-        print("No cycle time data available.")
+            print(f"    Minimum: {format_timedelta(cycle_stats['min'])} (Ticket: {cycle_stats['min_ticket']})")
+            print(f"    Maximum: {format_timedelta(cycle_stats['max'])} (Ticket: {cycle_stats['max_ticket']})")
+        else:
+            print("No cycle time data available.")
+
+    # Combined Cycle Time Statistics
+    if 'combined_cycle_time' in stats and stats['combined_cycle_time']:
+        print("\nCombined Cycle Time Statistics:")
+        combined_stats = stats['combined_cycle_time']
+        print(f"  Average: {format_timedelta(combined_stats['average'])}")
+        print(f"  Median: {format_timedelta(combined_stats['median'])}")
+        print(f"  Standard Deviation: {format_timedelta(combined_stats['std_dev'])}")
+        print(f"  Minimum: {format_timedelta(combined_stats['min'])}")
+        print(f"  Maximum: {format_timedelta(combined_stats['max'])}")
 
     # Contributors
+
 
     if 'contributors' in stats and stats['contributors']:
         print("\nContributor Statistics:")
@@ -215,11 +274,13 @@ def print_statistics(stats: Dict, use_story_points: bool):
             print("    Average Cycle Times:")
             for status, avg_time in data['avg_cycle_times'].items():
                 print(f"      {status}: {format_timedelta(avg_time)}")
+            if 'avg_combined_cycle_time' in data:
+                print(f"    Average Combined Cycle Time: {format_timedelta(data['avg_combined_cycle_time'])}")
             print(f"    First Completion: {data['first_completion']}")
             print(f"    Last Completion: {data['last_completion']}")
     else:
         print("\nNo contributor data available.")
-    
+        
     # Ticket Range
     if 'ticket_range' in stats and stats['ticket_range']:
         print("\nTicket Completion Range:")

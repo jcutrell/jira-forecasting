@@ -1,3 +1,4 @@
+from requests.exceptions import RequestException
 import concurrent.futures
 from typing import List, Tuple, Optional, Dict
 import logging
@@ -42,36 +43,45 @@ class JiraDataManager:
 
     def get_ticket_data(self, filter_id: str) -> List[Dict]:
         url = f"{self.base_url}/rest/api/2/search"
-        headers = {"Content-Type": "application/json"}
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
         
         all_issues = []
         start_at = 0
-        max_results = 50
+        max_results = 100  # Increased from 50 to 100 for efficiency
 
         while True:
-            params = {
+            payload = {
                 "jql": f"filter={filter_id}",
-                "fields": "key,customfield_10026,customfield_10082,created,resolutiondate,assignee,summary,description,status",
-                "expand": "changelog",
+                "fields": ["key", "customfield_10026", "customfield_10082", "created", "resolutiondate", "assignee", "summary", "description", "status"],
+                "expand": ["changelog"],
                 "startAt": start_at,
                 "maxResults": max_results
             }
             
-            response = requests.get(url, headers=headers, params=params, auth=self.auth)
-            
-            if response.status_code == 200:
+            try:
+                response = requests.post(url, json=payload, headers=headers, auth=self.auth)
+                response.raise_for_status()  # Raises an HTTPError for bad responses
+                
                 data = response.json()
                 issues = data["issues"]
+                
                 for issue in issues:
                     logger.debug(f"Received issue: Key: {issue['key']}, Story Points: {issue['fields'].get('customfield_10026')}")
-                all_issues.extend(self.process_issues(issues))
+                
+                processed_issues = self.process_issues(issues)
+                all_issues.extend(processed_issues)
                 
                 if len(issues) < max_results or len(all_issues) >= data["total"]:
                     break
                 
                 start_at += len(issues)
-            else:
-                logger.error(f"Error fetching tickets: {response.status_code}")
+            
+            except RequestException as e:
+                logger.error(f"Error fetching tickets: {str(e)}")
                 break
 
         logger.info(f"Retrieved {len(all_issues)} issues in total")
@@ -138,7 +148,9 @@ class JiraDataManager:
                     cycle_times[status] = duration
 
             return cycle_times, backlog_to_progress_count
+
     def get_unresolved_count(self, filter_id: str) -> Tuple[int, float]:
+        print("Here's the problem maybe.")
         url = f"{self.base_url}/rest/api/2/search"
         headers = {"Content-Type": "application/json"}
         params = {
@@ -233,25 +245,19 @@ class JiraDataManager:
 
         return tickets
 
-
-    def prepare_data(self, filter_id: str, use_story_points: bool = False) -> Tuple[Optional[pd.DataFrame], List[Dict]]:
-        print("Prepare data called")
-        tickets = self.get_ticket_data(filter_id)
-        if use_story_points:
-            tickets = self.backfill_story_points(tickets)
-
-        logger.info(f"Processing {len(tickets)} tickets from the historical data filter...")
+    def prepare_data(self, tickets: List[Dict], use_story_points: bool = False) -> pd.DataFrame:
+        logger.info(f"Processing {len(tickets)} tickets...")
 
         closed_tickets = [t for t in tickets if t['completed_date'] is not None]
 
         if not closed_tickets:
             logger.warning("No closed tickets found.")
-            return None, []
+            return None
 
         earliest_date = min(t['completed_date'] for t in closed_tickets)
         latest_date = max(t['completed_date'] for t in closed_tickets)
 
-        logger.info(f"Historical data spans from {earliest_date} to {latest_date}")
+        logger.info(f"Data spans from {earliest_date} to {latest_date}")
         logger.info(f"Total completed tickets in this period: {len(closed_tickets)}")
 
         date_range = pd.date_range(start=earliest_date, end=latest_date, freq="D")
@@ -273,7 +279,7 @@ class JiraDataManager:
         unit = "story points" if use_story_points else "items"
         logger.info(f"Average completion rate: {average_completion_rate:.2f} {unit} per day")
 
-        return df, tickets
+        return df
 
     def get_correlations(self, tickets: List[Dict]) -> Dict:
         df = pd.DataFrame(tickets)
