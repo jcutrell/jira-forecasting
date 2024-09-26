@@ -87,13 +87,15 @@ class JiraDataManager:
         logger.info(f"Retrieved {len(all_issues)} issues in total")
         return all_issues
 
+
     def process_issues(self, issues: List[Dict]) -> List[Dict]:
         processed_issues = []
         for issue in issues:
             cycle_times, backlog_to_progress = self.calculate_cycle_times(issue["changelog"]["histories"])
             processed_issue = {
                 "key": issue["key"],
-                "story_points": issue["fields"].get("customfield_10026"),
+                "story_points": issue["fields"].get("customfield_10026", 0) or 0,  # Use 0 if None or falsy
+                "summary": issue["fields"].get("summary", ""),
                 "created_date": pd.to_datetime(issue["fields"]["created"]).date(),
                 "completed_date": pd.to_datetime(issue["fields"]["resolutiondate"]).date() if issue["fields"]["resolutiondate"] else None,
                 "assignee": issue["fields"]["assignee"]["displayName"] if issue["fields"]["assignee"] else None,
@@ -150,39 +152,38 @@ class JiraDataManager:
             return cycle_times, backlog_to_progress_count
 
     def get_unresolved_count(self, filter_id: str) -> Tuple[int, float]:
-        print("Here's the problem maybe.")
-        url = f"{self.base_url}/rest/api/2/search"
-        headers = {"Content-Type": "application/json"}
-        params = {
-            "jql": f"filter={filter_id} AND resolution IS EMPTY",
-            "fields": "customfield_10026",
-            "maxResults": 1000
-        }
+       url = f"{self.base_url}/rest/api/2/search"
+       headers = {"Content-Type": "application/json"}
+       params = {
+           "jql": f"filter={filter_id} AND resolution IS EMPTY",
+           "fields": "customfield_10026",
+           "maxResults": 1000
+       }
 
-        item_count = 0
-        story_point_sum = 0
-        start_at = 0
+       item_count = 0
+       story_point_sum = 0
+       start_at = 0
 
-        while True:
-            params["startAt"] = start_at
-            response = requests.get(url, headers=headers, params=params, auth=self.auth)
+       while True:
+           params["startAt"] = start_at
+           response = requests.get(url, headers=headers, params=params, auth=self.auth)
 
-            if response.status_code != 200:
-                logger.error(f"Error fetching unresolved tickets: {response.status_code}")
-                return 0, 0
+           if response.status_code != 200:
+               logger.error(f"Error fetching unresolved tickets: {response.status_code}")
+               return 0, 0
 
-            data = response.json()
-            issues = data["issues"]
+           data = response.json()
+           issues = data["issues"]
 
-            item_count += len(issues)
-            story_point_sum += sum(issue["fields"].get("customfield_10026", 0) or 0 for issue in issues)
+           item_count += len(issues)
+           story_point_sum += sum(issue["fields"].get("customfield_10026", 0) or 0 for issue in issues)
 
-            if len(issues) < 1000:
-                break
+           if len(issues) < 1000:
+               break
 
-            start_at += len(issues)
+           start_at += len(issues)
 
-        return item_count, story_point_sum
+       return item_count, story_point_sum
 
     def get_story_points(self, filter_id: str) -> List[Optional[float]]:
         url = f"{self.base_url}/rest/api/2/search"
@@ -216,13 +217,11 @@ class JiraDataManager:
         
         return story_points
 
-
-
     def backfill_story_points(self, tickets: List[dict]) -> List[dict]:
         valid_points = [
             ticket["story_points"]
             for ticket in tickets
-            if ticket["story_points"] is not None
+            if ticket["story_points"] is not None and ticket["story_points"] > 0
         ]
         if not valid_points:
             logger.warning("No valid story points found. Using 1 as default.")
@@ -234,7 +233,7 @@ class JiraDataManager:
 
         backfilled_count = 0
         for ticket in tickets:
-            if "story_points" not in ticket or ticket["story_points"] is None:
+            if ticket["story_points"] is None or ticket["story_points"] == 0:
                 ticket["story_points"] = average_points
                 ticket["original_story_points"] = False
                 backfilled_count += 1
@@ -245,14 +244,15 @@ class JiraDataManager:
 
         return tickets
 
-    def prepare_data(self, tickets: List[Dict], use_story_points: bool = False) -> pd.DataFrame:
+
+    def prepare_data(self, tickets: List[Dict]) -> Tuple[pd.DataFrame, pd.DataFrame]:
         logger.info(f"Processing {len(tickets)} tickets...")
 
         closed_tickets = [t for t in tickets if t['completed_date'] is not None]
 
         if not closed_tickets:
             logger.warning("No closed tickets found.")
-            return None
+            return None, None
 
         earliest_date = min(t['completed_date'] for t in closed_tickets)
         latest_date = max(t['completed_date'] for t in closed_tickets)
@@ -261,25 +261,28 @@ class JiraDataManager:
         logger.info(f"Total completed tickets in this period: {len(closed_tickets)}")
 
         date_range = pd.date_range(start=earliest_date, end=latest_date, freq="D")
-        df = pd.DataFrame(index=date_range, columns=["Completed"])
-        df.index.name = "Date"
-        df["Completed"] = 0  # Initialize all days with 0 completed items/points
+        df_items = pd.DataFrame(index=date_range, columns=["Completed"])
+        df_points = pd.DataFrame(index=date_range, columns=["Completed"])
+        df_items.index.name = df_points.index.name = "Date"
+        df_items["Completed"] = df_points["Completed"] = 0  # Initialize all days with 0 completed items/points
 
         for ticket in closed_tickets:
             closed_timestamp = pd.Timestamp(ticket['completed_date'])
-            if closed_timestamp in df.index:
-                value = ticket['story_points'] if use_story_points else 1
-                df.at[closed_timestamp, 'Completed'] += value
+            if closed_timestamp in df_items.index:
+                df_items.at[closed_timestamp, 'Completed'] += 1
+                df_points.at[closed_timestamp, 'Completed'] += ticket['story_points']
             else:
                 logger.warning(f"Date {closed_timestamp} not in date range.")
                 
-        df["Cumulative Completed"] = df["Completed"].cumsum()
+        df_items["Cumulative Completed"] = df_items["Completed"].cumsum()
+        df_points["Cumulative Completed"] = df_points["Completed"].cumsum()
 
-        average_completion_rate = df["Completed"].mean()
-        unit = "story points" if use_story_points else "items"
-        logger.info(f"Average completion rate: {average_completion_rate:.2f} {unit} per day")
+        average_completion_rate_items = df_items["Completed"].mean()
+        average_completion_rate_points = df_points["Completed"].mean()
+        logger.info(f"Average completion rate: {average_completion_rate_items:.2f} items per day")
+        logger.info(f"Average completion rate: {average_completion_rate_points:.2f} story points per day")
 
-        return df
+        return df_items, df_points
 
     def get_correlations(self, tickets: List[Dict]) -> Dict:
         df = pd.DataFrame(tickets)

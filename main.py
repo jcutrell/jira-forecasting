@@ -1,9 +1,11 @@
 import configparser
 import logging
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple
 from collections import defaultdict
+import json
 from datetime import datetime, timedelta
 import pandas as pd
+import numpy as np
 
 from jira_data import JiraDataManager
 from forecasting import MonteCarloForecaster
@@ -38,6 +40,7 @@ def display_individual_metrics(jira_manager: JiraDataManager, tickets: List[Dict
     
     print(f"\nDetailed metrics for {selected_contributor}:")
     print(f"Total tickets: {len(contributor_tickets)}")
+    print(f"Total story points: {sum(t['story_points'] for t in contributor_tickets if t['story_points'] is not None):.2f}")
     
     for status in set(status for t in contributor_tickets for status in t['cycle_times'].keys()):
         times = [t['cycle_times'][status] for t in contributor_tickets if status in t['cycle_times']]
@@ -50,8 +53,7 @@ def display_individual_metrics(jira_manager: JiraDataManager, tickets: List[Dict
     
     print("\nTicket IDs:")
     for ticket in contributor_tickets:
-        print(f"  {ticket['key']}: {ticket['summary'] if 'summary' in ticket else 'N/A'}")
-
+        print(f"  {ticket['key']}: {ticket['summary']} (Story Points: {ticket['story_points']})")
 
 def prompt_for_statuses(jira_manager: JiraDataManager, tickets: List[Dict]) -> Set[str]:
     all_statuses = set()
@@ -81,7 +83,7 @@ def prompt_for_filter(jira_manager: JiraDataManager, prompt_text: str) -> str:
         else:
             print("Invalid input. Please enter a numeric filter ID or 'list'.")
 
-def remove_outliers(tickets: List[Dict], iqr_multiplier: float = 1.5) -> List[Dict]:
+def remove_outliers(tickets: List[Dict], iqr_multiplier: float = 1.5) -> Tuple[List[Dict], List[Dict]]:
     logger.info(f"Removing outliers using IQR method with multiplier {iqr_multiplier}")
     
     def calculate_iqr_bounds(data):
@@ -104,21 +106,28 @@ def remove_outliers(tickets: List[Dict], iqr_multiplier: float = 1.5) -> List[Di
 
     # Filter out outliers
     filtered_tickets = []
+    removed_outliers = []
     for ticket in tickets:
         is_outlier = False
+        outlier_statuses = []
         for status, time in ticket['cycle_times'].items():
             lower_bound, upper_bound = status_bounds[status]
-            if time.total_seconds() < lower_bound or time.total_seconds() > upper_bound:
+            if time.total_seconds() > upper_bound:  # Only remove long-running outliers
                 is_outlier = True
-                break
-        if not is_outlier:
+                outlier_statuses.append(status)
+        
+        if is_outlier:
+            removed_outliers.append(ticket)
+            print(f"Removed outlier: Ticket {ticket['key']}")
+            for status in outlier_statuses:
+                print(f"  Status: {status}, Time: {ticket['cycle_times'][status]}, Upper bound: {timedelta(seconds=status_bounds[status][1])}")
+        else:
             filtered_tickets.append(ticket)
 
-    logger.info(f"Removed {len(tickets) - len(filtered_tickets)} outliers")
-    return filtered_tickets
+    logger.info(f"Removed {len(removed_outliers)} outliers")
+    return filtered_tickets, removed_outliers
 
 def main():
-
     config = load_config()
     
     done_status = input("Enter the status to consider as 'Done' (default is 'Done'): ").strip() or "Done"
@@ -135,32 +144,38 @@ def main():
         logger.error("No tickets found in the filter. Exiting.")
         return
 
-    use_story_points = input("Use story points for calculations? (y/n): ").lower() == 'y'
-    
     remove_outliers_choice = input("Do you want to remove outliers from the data? (y/n): ").lower() == 'y'
     if remove_outliers_choice:
         iqr_multiplier = float(input("Enter the IQR multiplier for outlier detection (default is 1.5): ") or 1.5)
-        tickets = remove_outliers(tickets, iqr_multiplier)
+        tickets, removed_outliers = remove_outliers(tickets, iqr_multiplier)
+        print(f"\nRemoved {len(removed_outliers)} outliers.")
     
-    if use_story_points:
-        tickets = jira_manager.backfill_story_points(tickets)
+    # Optionally, you can save the removed outliers to a file for further analysis
+   #  if removed_outliers:
+        # outlier_file = "removed_outliers.json"
+        # with open(outlier_file, "w") as f:
+            # json.dump(removed_outliers, f, default=str, indent=2)
+        # print(f"Removed outliers have been saved to {outlier_file}")
+    
+    tickets = jira_manager.backfill_story_points(tickets)
     
     combine_statuses = input("Do you want to see combined cycle time for specific statuses? (y/n): ").lower() == 'y'
     selected_statuses = prompt_for_statuses(jira_manager, tickets) if combine_statuses else None
     
-    stats = jira_stats.get_filter_statistics(tickets, use_story_points, selected_statuses)
-    print_statistics(stats, use_story_points)
+    stats = jira_stats.get_filter_statistics(tickets, selected_statuses)
+    print_statistics(stats)
 
-    df = jira_manager.prepare_data(tickets, use_story_points)
+    df_items, df_points = jira_manager.prepare_data(tickets)
 
-    if df is None:
+    if df_items is None or df_points is None:
         logger.error("No data available for forecasting. Exiting.")
         return
     
+
     while True:
         print("\nChoose an analysis option:")
-        print("1. Forecast completed items/points for various time periods")
-        print("2. Forecast time to complete a specific number of items/points")
+        print("1. Forecast completed work for various time periods")
+        print("2. Forecast time to complete a specific amount of work")
         print("3. Forecast completion time for a backlog")
         print("4. Display detailed metrics for an individual")
         print("5. Exit")
@@ -168,11 +183,11 @@ def main():
         choice = input("Enter your choice (1-5): ")
 
         if choice == "1":
-            forecast_completed(forecaster, df, use_story_points)
+            forecast_completed(forecaster, df_items, df_points)
         elif choice == "2":
-            forecast_completion_time(forecaster, df, use_story_points)
+            forecast_completion_time(forecaster, df_items, df_points)
         elif choice == "3":
-            forecast_backlog_completion(jira_manager, forecaster, df, use_story_points)
+            forecast_backlog_completion(jira_manager, forecaster, df_items, df_points)
         elif choice == "4":
             display_individual_metrics(jira_manager, tickets)
         elif choice == "5":
@@ -180,9 +195,13 @@ def main():
             break
         else:
             logger.warning("Invalid choice. Please try again.")
-        
-def forecast_completed(forecaster: MonteCarloForecaster, df: pd.DataFrame, use_story_points: bool):
-    unit = "story points" if use_story_points else "items"
+            
+
+def forecast_completed(forecaster: MonteCarloForecaster, df_items: pd.DataFrame, df_points: pd.DataFrame):
+    forecast_points = input("Do you want to forecast using story points? (y/n): ").lower() == "y"
+    df = df_points if forecast_points else df_items
+    unit = "story points" if forecast_points else "items"
+    
     print(f"\nProjected number of completed {unit}:")
     for days in [14, 28, 42, 56, 70, 84, 98, 112, 136]:
         projected = forecaster.run_simulation(df, num_days=days)
@@ -194,34 +213,35 @@ def forecast_completed(forecaster: MonteCarloForecaster, df: pd.DataFrame, use_s
         print(f"  85th percentile: {projected[2]:.0f}")
         print(f"  95th percentile: {projected[3]:.0f}")
 
-def forecast_completion_time(forecaster: MonteCarloForecaster, df: pd.DataFrame, use_story_points: bool):
-    unit = "story points" if use_story_points else "items"
+def forecast_completion_time(forecaster: MonteCarloForecaster, df_items: pd.DataFrame, df_points: pd.DataFrame):
+    forecast_points = input("Do you want to forecast using story points? (y/n): ").lower() == "y"
+    df = df_points if forecast_points else df_items
+    unit = "story points" if forecast_points else "items"
+    
     target = float(input(f"Enter the number of {unit} to complete: "))
     days_to_target = forecaster.run_simulation(df, target_count=target)
-    print(f"\nEstimated days to complete {target} {unit}:")
+    
+    print(f"\nEstimated days to complete {target:.0f} {unit}:")
     print(f"50% chance of completion within: {days_to_target[0]:.0f} days")
     print(f"75% chance of completion within: {days_to_target[1]:.0f} days")
     print(f"85% chance of completion within: {days_to_target[2]:.0f} days")
     print(f"95% chance of completion within: {days_to_target[3]:.0f} days")
 
-def forecast_backlog_completion(jira_manager: JiraDataManager, forecaster: MonteCarloForecaster, df: pd.DataFrame, use_story_points: bool):
+def forecast_backlog_completion(jira_manager: JiraDataManager, forecaster: MonteCarloForecaster, df_items: pd.DataFrame, df_points: pd.DataFrame):
     unresolved_filter_id = prompt_for_filter(jira_manager, "Select the filter for unresolved items:")
     item_count, story_point_sum = jira_manager.get_unresolved_count(unresolved_filter_id)
     
-    if use_story_points:
-        unresolved_count = story_point_sum
-        unit = "story points"
-    else:
-        unresolved_count = item_count
-        unit = "items"
-    
     logger.info(f"Found {item_count} unresolved items totaling {story_point_sum:.2f} story points in the selected filter.")
-    logger.info(f"Using {unresolved_count:.2f} {unit} for forecasting based on selected mode.")
+    
+    forecast_points = input("Do you want to forecast using story points? (y/n): ").lower() == "y"
+    df = df_points if forecast_points else df_items
+    unit = "story points" if forecast_points else "items"
+    unresolved_count = storypoint_sum if forecast_points else item_count
     
     inflation = float(input(f"Enter the number of additional {unit} expected (default 0): ") or 0)
     total = unresolved_count + inflation
 
-    logger.info(f"Forecasting completion time for {total:.2f} {unit} (including {inflation} inflated {unit}):")
+    logger.info(f"Forecasting completion time for {total:.2f} {unit}:")
 
     days_to_target, completion_dates = forecaster.forecast_backlog(df, total)
 
