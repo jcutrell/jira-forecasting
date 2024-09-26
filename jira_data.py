@@ -11,12 +11,18 @@ from requests.auth import HTTPBasicAuth
 
 logger = logging.getLogger(__name__)
 
+def load_config() -> configparser.ConfigParser:
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+    return config
+
 class JiraDataManager:
     def __init__(self, email: str, api_key: str, done_status: str = "Done"):
+        self.config = load_config()
         self.email = email
         self.api_key = api_key
         self.auth = HTTPBasicAuth(email, api_key)
-        self.base_url = "https://calendlyapp.atlassian.net"
+        self.base_url = self.config['Jira']['base_url']
         self.done_status = done_status
 
     def get_filter_list(self) -> List[Tuple[str, str]]:
