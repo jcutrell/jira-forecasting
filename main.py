@@ -236,7 +236,16 @@ def forecast_backlog_completion(jira_manager: JiraDataManager, forecaster: Monte
     forecast_points = input("Do you want to forecast using story points? (y/n): ").lower() == "y"
     df = df_points if forecast_points else df_items
     unit = "story points" if forecast_points else "items"
-    unresolved_count = storypoint_sum if forecast_points else item_count
+
+    if forecast_points:
+        tickets = jira_manager.get_ticket_data(unresolved_filter_id)
+        tickets = jira_manager.backfill_story_points(tickets)
+        story_point_sum = sum(item["story_points"] for item in tickets if "story_points" in item)
+        print(f"Story point sum calculated after backfill: {story_point_sum}")
+
+    unresolved_count = story_point_sum if forecast_points else item_count
+
+    
     
     inflation = float(input(f"Enter the number of additional {unit} expected (default 0): ") or 0)
     total = unresolved_count + inflation
