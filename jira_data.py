@@ -290,26 +290,3 @@ class JiraDataManager:
         logger.info(f"Average completion rate: {average_completion_rate_points:.2f} story points per day")
 
         return df_items, df_points
-
-    def get_correlations(self, tickets: List[Dict]) -> Dict:
-        df = pd.DataFrame(tickets)
-        
-        correlations = {}
-        
-        def timedelta_to_seconds(td):
-            return td.total_seconds() if pd.notnull(td) else pd.NaT
-
-        if 'acceptance_criteria_length' in df.columns and 'cycle_time' in df.columns:
-            cycle_times = df['cycle_time'].apply(timedelta_to_seconds)
-            correlations['acceptance_criteria_cycle_time'] = df['acceptance_criteria_length'].corr(cycle_times)
-
-        if 'description_length' in df.columns and 'cycle_time' in df.columns:
-            cycle_times = df['cycle_time'].apply(timedelta_to_seconds)
-            correlations['description_cycle_time'] = df['description_length'].corr(cycle_times)
-
-        if 'story_points' in df.columns and 'cycle_time' in df.columns:
-            df_with_points = df.dropna(subset=['story_points', 'cycle_time'])
-            cycle_times = df_with_points['cycle_time'].apply(timedelta_to_seconds)
-            correlations['story_points_cycle_time'] = df_with_points['story_points'].corr(cycle_times)
-
-        return correlations

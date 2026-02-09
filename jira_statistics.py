@@ -220,31 +220,36 @@ class JiraStatistics:
 
     def get_correlations(self, tickets: List[Dict]) -> Dict:
         logger.info("Calculating correlations")
-        df = pd.DataFrame(tickets)
 
+        records = []
+        for ticket in tickets:
+            total_seconds = sum(
+                td.total_seconds() for td in ticket["cycle_times"].values()
+            )
+            records.append({
+                "acceptance_criteria_length": ticket.get("acceptance_criteria_length", 0),
+                "description_length": ticket.get("description_length", 0),
+                "story_points": ticket.get("story_points"),
+                "total_cycle_time_seconds": total_seconds,
+            })
+
+        df = pd.DataFrame(records)
         correlations = {}
 
-        def timedelta_to_seconds(td):
-            return td.total_seconds() if pd.notnull(td) else pd.NaT
-
-        if "acceptance_criteria_length" in df.columns and "cycle_time" in df.columns:
-            cycle_times = df["cycle_time"].apply(timedelta_to_seconds)
+        if len(df) > 1:
             correlations["acceptance_criteria_cycle_time"] = df[
                 "acceptance_criteria_length"
-            ].corr(cycle_times)
+            ].corr(df["total_cycle_time_seconds"])
 
-        if "description_length" in df.columns and "cycle_time" in df.columns:
-            cycle_times = df["cycle_time"].apply(timedelta_to_seconds)
             correlations["description_cycle_time"] = df["description_length"].corr(
-                cycle_times
+                df["total_cycle_time_seconds"]
             )
 
-        if "story_points" in df.columns and "cycle_time" in df.columns:
-            df_with_points = df.dropna(subset=["story_points", "cycle_time"])
-            cycle_times = df_with_points["cycle_time"].apply(timedelta_to_seconds)
-            correlations["story_points_cycle_time"] = df_with_points[
-                "story_points"
-            ].corr(cycle_times)
+            df_with_points = df.dropna(subset=["story_points"])
+            if len(df_with_points) > 1:
+                correlations["story_points_cycle_time"] = df_with_points[
+                    "story_points"
+                ].corr(df_with_points["total_cycle_time_seconds"])
 
         return correlations
 
