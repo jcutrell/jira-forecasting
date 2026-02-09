@@ -175,28 +175,6 @@ class JiraStatistics:
 
         return {"count": len(contributors), "details": dict(contributors)}
 
-    def get_ticket_range(self, tickets: List[Dict]) -> Dict:
-        logger.info("Determining first and last completed tickets")
-        completed_tickets = [t for t in tickets if t["completed_date"]]
-
-        if not completed_tickets:
-            logger.warning("No completed tickets found.")
-            return {}
-
-        first_ticket = min(completed_tickets, key=lambda x: x["completed_date"])
-        last_ticket = max(completed_tickets, key=lambda x: x["completed_date"])
-
-        return {
-            "first_ticket": {
-                "key": first_ticket["key"],
-                "completion_date": first_ticket["completed_date"],
-            },
-            "last_ticket": {
-                "key": last_ticket["key"],
-                "completion_date": last_ticket["completed_date"],
-            },
-        }
-
     def analyze_story_points(self, tickets: List[Dict]) -> Dict:
         logger.info("Analyzing story point data")
 
