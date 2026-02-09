@@ -12,6 +12,15 @@ class JiraStatistics:
     def __init__(self, jira_manager):
         self.jira_manager = jira_manager
 
+    @staticmethod
+    def calculate_combined_cycle_time(
+        cycle_times: Dict[str, timedelta], selected_statuses: Set[str]
+    ) -> timedelta:
+        return sum(
+            (cycle_times.get(status, timedelta(0)) for status in selected_statuses),
+            timedelta(0),
+        )
+
     def get_filter_statistics(
         self, tickets: List[Dict], selected_statuses: Set[str] = None
     ) -> Dict:
@@ -42,7 +51,7 @@ class JiraStatistics:
         combined_times = []
 
         for ticket in tickets:
-            combined_time = self.jira_manager.calculate_combined_cycle_time(
+            combined_time = self.calculate_combined_cycle_time(
                 ticket["cycle_times"], selected_statuses
             )
             combined_times.append(combined_time.total_seconds())
@@ -119,6 +128,7 @@ class JiraStatistics:
                 "count": 0,
                 "points": 0,
                 "cycle_times": defaultdict(list),
+                "combined_cycle_times": [],
                 "first_completion": None,
                 "last_completion": None,
             }
@@ -145,7 +155,7 @@ class JiraStatistics:
                 ):
                     contributors[assignee]["last_completion"] = completion_date
                 if selected_statuses:
-                    combined_time = self.jira_manager.calculate_combined_cycle_time(
+                    combined_time = self.calculate_combined_cycle_time(
                         ticket["cycle_times"], selected_statuses
                     )
                     contributors[assignee]["combined_cycle_times"].append(combined_time)
