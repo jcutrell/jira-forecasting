@@ -6,7 +6,7 @@ import pandas as pd
 def plot_cumulative_flow(df):
     plt.figure(figsize=(12, 6))
     plt.plot(
-        df.index, df["Cumulative Completed Items"], label="Cumulative Completed Items"
+        df.index, df["Cumulative Completed"], label="Cumulative Completed"
     )
     plt.title("Cumulative Flow Diagram")
     plt.xlabel("Date")
@@ -61,7 +61,7 @@ def plot_completion_forecast(forecast_dates, actual_dates):
 
 
 def plot_throughput_trend(df):
-    weekly_throughput = df["Completed Items"].resample("W").sum()
+    weekly_throughput = df["Completed"].resample("W").sum()
     plt.figure(figsize=(12, 6))
     plt.plot(weekly_throughput.index, weekly_throughput.values, marker="o")
     plt.title("Weekly Throughput Trend")
