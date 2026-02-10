@@ -96,19 +96,26 @@ Dead outlier-saving code should be removed or made into a feature.
 
 No `.flake8`, `ruff.toml`, black config, or pre-commit hooks.
 
-## Recommended improvements (prioritized)
+## Resolution status
 
-| # | Improvement | Category |
-|---|------------|----------|
-| 1 | Fix `combined_cycle_times` KeyError | Bug |
-| 2 | Remove duplicate `get_ticket_range` and `get_correlations` | Bug |
-| 3 | Fix `visualization_utils.py` column names | Bug |
-| 4 | Add `pyproject.toml` with pinned deps and Python version | Infrastructure |
-| 5 | Add unit tests for `MonteCarloForecaster` and `JiraStatistics` | Infrastructure |
-| 6 | Extract custom field IDs into configuration | Code quality |
-| 7 | Consolidate `load_config()` and config handling | Code quality |
-| 8 | Add input validation on CLI prompts | Code quality |
-| 9 | Add a README with setup instructions | Hygiene |
-| 10 | Add CI workflow (GitHub Actions) | Infrastructure |
-| 11 | Remove unused `scipy` dep and dead wrapper methods | Hygiene |
-| 12 | Add linting/formatting (ruff or flake8+black) | Hygiene |
+| # | Issue | Status |
+|---|-------|--------|
+| 1 | Duplicate `get_ticket_range` | **Fixed** -- removed duplicate |
+| 2 | Duplicate/broken `get_correlations` | **Fixed** -- rewrote to use `cycle_times` dict, removed duplicate from jira_data.py |
+| 3 | Missing `combined_cycle_times` key + missing `calculate_combined_cycle_time` method | **Fixed** -- added static method to JiraStatistics, added key to defaultdict |
+| 4 | Broken visualization column names | **Fixed** -- matched to `prepare_data` output |
+| 5 | No tests | **Fixed** -- 50 tests across 3 test files |
+| 6 | No `pyproject.toml` | **Fixed** -- added with pinned deps, Python >=3.9, pytest/ruff dev deps |
+| 7 | Unpinned dependencies | **Fixed** -- pinned in requirements.txt, removed unused scipy, added missing pytz |
+| 8 | No CI/CD | **Not done** -- deferred until tests are verified on a real Jira instance |
+| 9 | Hardcoded custom field IDs | **Fixed** -- extracted to class constants on JiraDataManager |
+| 10 | Duplicate `load_config()` | **Fixed** -- consolidated, base_url now passed explicitly |
+| 11 | Inconsistent config handling | **Fixed** -- all config values passed as constructor params |
+| 12 | Mixed Jira API versions | **Not done** -- risky without a test Jira instance |
+| 13 | Dead code in forecasting.py | **Fixed** -- removed unused wrapper methods |
+| 14 | No CLI input validation | **Fixed** -- try/except around float(input()) calls |
+| 15 | No README | **Fixed** -- added with setup, usage, and project structure |
+| 16 | scratch.md in repo | **Fixed** -- deleted |
+| 17 | Inconsistent indentation | **Fixed** -- normalized to 4-space |
+| 18 | Commented-out code | **Fixed** -- removed |
+| 19 | No linting config | **Fixed** -- ruff configured, codebase formatted, all checks pass |
