@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class JiraDataManager:
+    STORY_POINTS_FIELD = "customfield_10026"
+    ACCEPTANCE_CRITERIA_FIELD = "customfield_10082"
+
     def __init__(self, email: str, api_key: str, base_url: str, done_status: str = "Done"):
         self.email = email
         self.api_key = api_key
@@ -56,7 +59,7 @@ class JiraDataManager:
         while True:
             payload = {
                 "jql": f"filter={filter_id}",
-                "fields": ["key", "customfield_10026", "customfield_10082", "created", "resolutiondate", "assignee", "summary", "description", "status"],
+                "fields": ["key", self.STORY_POINTS_FIELD, self.ACCEPTANCE_CRITERIA_FIELD, "created", "resolutiondate", "assignee", "summary", "description", "status"],
                 "expand": ["changelog"],
                 "startAt": start_at,
                 "maxResults": max_results
@@ -70,7 +73,7 @@ class JiraDataManager:
                 issues = data["issues"]
                 
                 for issue in issues:
-                    logger.debug(f"Received issue: Key: {issue['key']}, Story Points: {issue['fields'].get('customfield_10026')}")
+                    logger.debug(f"Received issue: Key: {issue['key']}, Story Points: {issue['fields'].get(self.STORY_POINTS_FIELD)}")
                 
                 processed_issues = self.process_issues(issues)
                 all_issues.extend(processed_issues)
@@ -94,14 +97,14 @@ class JiraDataManager:
             cycle_times, backlog_to_progress = self.calculate_cycle_times(issue["changelog"]["histories"])
             processed_issue = {
                 "key": issue["key"],
-                "story_points": issue["fields"].get("customfield_10026", 0) or 0,  # Use 0 if None or falsy
+                "story_points": issue["fields"].get(self.STORY_POINTS_FIELD, 0) or 0,
                 "summary": issue["fields"].get("summary", ""),
                 "created_date": pd.to_datetime(issue["fields"]["created"]).date(),
                 "completed_date": pd.to_datetime(issue["fields"]["resolutiondate"]).date() if issue["fields"]["resolutiondate"] else None,
                 "assignee": issue["fields"]["assignee"]["displayName"] if issue["fields"]["assignee"] else None,
                 "description_length": len(issue["fields"]["description"] or ""),
-                "acceptance_criteria": issue["fields"].get("customfield_10082", ""),
-                "acceptance_criteria_length": len(issue["fields"].get("customfield_10082", "") or ""),
+                "acceptance_criteria": issue["fields"].get(self.ACCEPTANCE_CRITERIA_FIELD, ""),
+                "acceptance_criteria_length": len(issue["fields"].get(self.ACCEPTANCE_CRITERIA_FIELD, "") or ""),
                 "cycle_times": cycle_times,
                 "backlog_to_progress": backlog_to_progress
             }
@@ -156,7 +159,7 @@ class JiraDataManager:
        headers = {"Content-Type": "application/json"}
        params = {
            "jql": f"filter={filter_id} AND resolution IS EMPTY",
-           "fields": "customfield_10026",
+           "fields": self.STORY_POINTS_FIELD,
            "maxResults": 1000
        }
 
@@ -176,7 +179,7 @@ class JiraDataManager:
            issues = data["issues"]
 
            item_count += len(issues)
-           story_point_sum += sum(issue["fields"].get("customfield_10026", 0) or 0 for issue in issues)
+           story_point_sum += sum(issue["fields"].get(self.STORY_POINTS_FIELD, 0) or 0 for issue in issues)
 
            if len(issues) < 1000:
                break
@@ -190,25 +193,25 @@ class JiraDataManager:
         headers = {"Content-Type": "application/json"}
         params = {
             "jql": f"filter={filter_id} AND resolution IS EMPTY",
-            "fields": "customfield_10026",
+            "fields": self.STORY_POINTS_FIELD,
             "maxResults": 1000
         }
-        
+
         story_points = []
         start_at = 0
-        
+
         while True:
             params["startAt"] = start_at
             response = requests.get(url, headers=headers, params=params, auth=self.auth)
-            
+
             if response.status_code != 200:
                 logger.error(f"Error fetching story points: {response.status_code}")
                 return []
-            
+
             data = response.json()
             issues = data['issues']
-            
-            story_points.extend([issue['fields'].get('customfield_10026') for issue in issues])
+
+            story_points.extend([issue['fields'].get(self.STORY_POINTS_FIELD) for issue in issues])
             
             if len(issues) < 1000:
                 break
