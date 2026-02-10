@@ -1,6 +1,7 @@
-import pytest
 from datetime import date, timedelta
 from unittest.mock import MagicMock
+
+import pytest
 
 from jira_statistics import JiraStatistics, format_timedelta
 
@@ -86,16 +87,12 @@ class TestCalculateCombinedCycleTime:
             "In Review": timedelta(days=1),
             "Done": timedelta(days=0),
         }
-        result = JiraStatistics.calculate_combined_cycle_time(
-            cycle_times, {"In Progress", "In Review"}
-        )
+        result = JiraStatistics.calculate_combined_cycle_time(cycle_times, {"In Progress", "In Review"})
         assert result == timedelta(days=3)
 
     def test_missing_status_treated_as_zero(self):
         cycle_times = {"In Progress": timedelta(days=2)}
-        result = JiraStatistics.calculate_combined_cycle_time(
-            cycle_times, {"In Progress", "In Review"}
-        )
+        result = JiraStatistics.calculate_combined_cycle_time(cycle_times, {"In Progress", "In Review"})
         assert result == timedelta(days=2)
 
     def test_empty_statuses(self):
@@ -166,9 +163,7 @@ class TestAnalyzeContributors:
         assert result["details"]["Bob"]["points"] == 5
 
     def test_with_selected_statuses(self, stats, sample_tickets):
-        result = stats.analyze_contributors(
-            sample_tickets, selected_statuses={"In Progress", "In Review"}
-        )
+        result = stats.analyze_contributors(sample_tickets, selected_statuses={"In Progress", "In Review"})
         alice = result["details"]["Alice"]
         assert "avg_combined_cycle_time" in alice
         assert len(alice["combined_cycle_times"]) == 2
@@ -240,8 +235,6 @@ class TestGetFilterStatistics:
         assert result["combined_cycle_time"] is None
 
     def test_combined_cycle_time_present_with_statuses(self, stats, sample_tickets):
-        result = stats.get_filter_statistics(
-            sample_tickets, selected_statuses={"In Progress"}
-        )
+        result = stats.get_filter_statistics(sample_tickets, selected_statuses={"In Progress"})
         assert result["combined_cycle_time"] is not None
         assert "average" in result["combined_cycle_time"]

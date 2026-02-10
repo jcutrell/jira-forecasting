@@ -1,12 +1,13 @@
-from requests.exceptions import RequestException
-from typing import List, Tuple, Optional, Dict
 import logging
-import pytz
-from datetime import datetime, timedelta
-import pandas as pd
+from datetime import timedelta
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
+import pytz
 import requests
 from requests.auth import HTTPBasicAuth
+from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,8 @@ class JiraDataManager:
     def get_ticket_data(self, filter_id: str) -> List[Dict]:
         url = f"{self.base_url}/rest/api/2/search"
 
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
-        
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+
         all_issues = []
         start_at = 0
         max_results = 100  # Increased from 50 to 100 for efficiency
@@ -59,37 +57,47 @@ class JiraDataManager:
         while True:
             payload = {
                 "jql": f"filter={filter_id}",
-                "fields": ["key", self.STORY_POINTS_FIELD, self.ACCEPTANCE_CRITERIA_FIELD, "created", "resolutiondate", "assignee", "summary", "description", "status"],
+                "fields": [
+                    "key",
+                    self.STORY_POINTS_FIELD,
+                    self.ACCEPTANCE_CRITERIA_FIELD,
+                    "created",
+                    "resolutiondate",
+                    "assignee",
+                    "summary",
+                    "description",
+                    "status",
+                ],
                 "expand": ["changelog"],
                 "startAt": start_at,
-                "maxResults": max_results
+                "maxResults": max_results,
             }
-            
+
             try:
                 response = requests.post(url, json=payload, headers=headers, auth=self.auth)
                 response.raise_for_status()  # Raises an HTTPError for bad responses
-                
+
                 data = response.json()
                 issues = data["issues"]
-                
+
                 for issue in issues:
-                    logger.debug(f"Received issue: Key: {issue['key']}, Story Points: {issue['fields'].get(self.STORY_POINTS_FIELD)}")
-                
+                    sp = issue["fields"].get(self.STORY_POINTS_FIELD)
+                    logger.debug(f"Received issue: Key: {issue['key']}, Story Points: {sp}")
+
                 processed_issues = self.process_issues(issues)
                 all_issues.extend(processed_issues)
-                
+
                 if len(issues) < max_results or len(all_issues) >= data["total"]:
                     break
-                
+
                 start_at += len(issues)
-            
+
             except RequestException as e:
                 logger.error(f"Error fetching tickets: {str(e)}")
                 break
 
         logger.info(f"Retrieved {len(all_issues)} issues in total")
         return all_issues
-
 
     def process_issues(self, issues: List[Dict]) -> List[Dict]:
         processed_issues = []
@@ -100,20 +108,21 @@ class JiraDataManager:
                 "story_points": issue["fields"].get(self.STORY_POINTS_FIELD, 0) or 0,
                 "summary": issue["fields"].get("summary", ""),
                 "created_date": pd.to_datetime(issue["fields"]["created"]).date(),
-                "completed_date": pd.to_datetime(issue["fields"]["resolutiondate"]).date() if issue["fields"]["resolutiondate"] else None,
+                "completed_date": pd.to_datetime(issue["fields"]["resolutiondate"]).date()
+                if issue["fields"]["resolutiondate"]
+                else None,
                 "assignee": issue["fields"]["assignee"]["displayName"] if issue["fields"]["assignee"] else None,
                 "description_length": len(issue["fields"]["description"] or ""),
                 "acceptance_criteria": issue["fields"].get(self.ACCEPTANCE_CRITERIA_FIELD, ""),
                 "acceptance_criteria_length": len(issue["fields"].get(self.ACCEPTANCE_CRITERIA_FIELD, "") or ""),
                 "cycle_times": cycle_times,
-                "backlog_to_progress": backlog_to_progress
+                "backlog_to_progress": backlog_to_progress,
             }
             processed_issues.append(processed_issue)
         return processed_issues
 
     def calculate_cycle_times(self, changelog: List[Dict]) -> Tuple[Dict[str, timedelta], int]:
         status_changes = []
-        current_status = None
         backlog_to_progress_count = 0
 
         for history in changelog:
@@ -155,38 +164,38 @@ class JiraDataManager:
         return cycle_times, backlog_to_progress_count
 
     def get_unresolved_count(self, filter_id: str) -> Tuple[int, float]:
-       url = f"{self.base_url}/rest/api/2/search"
-       headers = {"Content-Type": "application/json"}
-       params = {
-           "jql": f"filter={filter_id} AND resolution IS EMPTY",
-           "fields": self.STORY_POINTS_FIELD,
-           "maxResults": 1000
-       }
+        url = f"{self.base_url}/rest/api/2/search"
+        headers = {"Content-Type": "application/json"}
+        params = {
+            "jql": f"filter={filter_id} AND resolution IS EMPTY",
+            "fields": self.STORY_POINTS_FIELD,
+            "maxResults": 1000,
+        }
 
-       item_count = 0
-       story_point_sum = 0
-       start_at = 0
+        item_count = 0
+        story_point_sum = 0
+        start_at = 0
 
-       while True:
-           params["startAt"] = start_at
-           response = requests.get(url, headers=headers, params=params, auth=self.auth)
+        while True:
+            params["startAt"] = start_at
+            response = requests.get(url, headers=headers, params=params, auth=self.auth)
 
-           if response.status_code != 200:
-               logger.error(f"Error fetching unresolved tickets: {response.status_code}")
-               return 0, 0
+            if response.status_code != 200:
+                logger.error(f"Error fetching unresolved tickets: {response.status_code}")
+                return 0, 0
 
-           data = response.json()
-           issues = data["issues"]
+            data = response.json()
+            issues = data["issues"]
 
-           item_count += len(issues)
-           story_point_sum += sum(issue["fields"].get(self.STORY_POINTS_FIELD, 0) or 0 for issue in issues)
+            item_count += len(issues)
+            story_point_sum += sum(issue["fields"].get(self.STORY_POINTS_FIELD, 0) or 0 for issue in issues)
 
-           if len(issues) < 1000:
-               break
+            if len(issues) < 1000:
+                break
 
-           start_at += len(issues)
+            start_at += len(issues)
 
-       return item_count, story_point_sum
+        return item_count, story_point_sum
 
     def get_story_points(self, filter_id: str) -> List[Optional[float]]:
         url = f"{self.base_url}/rest/api/2/search"
@@ -194,7 +203,7 @@ class JiraDataManager:
         params = {
             "jql": f"filter={filter_id} AND resolution IS EMPTY",
             "fields": self.STORY_POINTS_FIELD,
-            "maxResults": 1000
+            "maxResults": 1000,
         }
 
         story_points = []
@@ -209,15 +218,15 @@ class JiraDataManager:
                 return []
 
             data = response.json()
-            issues = data['issues']
+            issues = data["issues"]
 
-            story_points.extend([issue['fields'].get(self.STORY_POINTS_FIELD) for issue in issues])
-            
+            story_points.extend([issue["fields"].get(self.STORY_POINTS_FIELD) for issue in issues])
+
             if len(issues) < 1000:
                 break
-            
+
             start_at += len(issues)
-        
+
         return story_points
 
     def backfill_story_points(self, tickets: List[dict]) -> List[dict]:
@@ -247,18 +256,17 @@ class JiraDataManager:
 
         return tickets
 
-
     def prepare_data(self, tickets: List[Dict]) -> Tuple[pd.DataFrame, pd.DataFrame]:
         logger.info(f"Processing {len(tickets)} tickets...")
 
-        closed_tickets = [t for t in tickets if t['completed_date'] is not None]
+        closed_tickets = [t for t in tickets if t["completed_date"] is not None]
 
         if not closed_tickets:
             logger.warning("No closed tickets found.")
             return None, None
 
-        earliest_date = min(t['completed_date'] for t in closed_tickets)
-        latest_date = max(t['completed_date'] for t in closed_tickets)
+        earliest_date = min(t["completed_date"] for t in closed_tickets)
+        latest_date = max(t["completed_date"] for t in closed_tickets)
 
         logger.info(f"Data spans from {earliest_date} to {latest_date}")
         logger.info(f"Total completed tickets in this period: {len(closed_tickets)}")
@@ -270,13 +278,13 @@ class JiraDataManager:
         df_items["Completed"] = df_points["Completed"] = 0  # Initialize all days with 0 completed items/points
 
         for ticket in closed_tickets:
-            closed_timestamp = pd.Timestamp(ticket['completed_date'])
+            closed_timestamp = pd.Timestamp(ticket["completed_date"])
             if closed_timestamp in df_items.index:
-                df_items.at[closed_timestamp, 'Completed'] += 1
-                df_points.at[closed_timestamp, 'Completed'] += ticket['story_points']
+                df_items.at[closed_timestamp, "Completed"] += 1
+                df_points.at[closed_timestamp, "Completed"] += ticket["story_points"]
             else:
                 logger.warning(f"Date {closed_timestamp} not in date range.")
-                
+
         df_items["Cumulative Completed"] = df_items["Completed"].cumsum()
         df_points["Cumulative Completed"] = df_points["Completed"].cumsum()
 

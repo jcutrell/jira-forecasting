@@ -1,7 +1,8 @@
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime
 
 from forecasting import MonteCarloForecaster
 

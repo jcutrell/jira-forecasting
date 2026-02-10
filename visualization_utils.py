@@ -1,13 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 
 def plot_cumulative_flow(df):
     plt.figure(figsize=(12, 6))
-    plt.plot(
-        df.index, df["Cumulative Completed"], label="Cumulative Completed"
-    )
+    plt.plot(df.index, df["Cumulative Completed"], label="Cumulative Completed")
     plt.title("Cumulative Flow Diagram")
     plt.xlabel("Date")
     plt.ylabel("Number of Items")

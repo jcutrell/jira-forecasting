@@ -20,3 +20,13 @@ dev = ["pytest>=7.0", "ruff>=0.4"]
 
 [project.scripts]
 jira-forecast = "main:main"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
