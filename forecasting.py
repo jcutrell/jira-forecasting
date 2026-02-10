@@ -32,14 +32,6 @@ class MonteCarloForecaster:
                 simulations, [0.5, 0.25, 0.15, 0.05], axis=0, method="lower"
             )[:, -1]
 
-    def forecast_completed_items(self, df: pd.DataFrame, num_days: int) -> List[float]:
-        return self.run_simulation(df, num_days=num_days)
-
-    def forecast_completion_time(
-        self, df: pd.DataFrame, item_count: float
-    ) -> List[float]:
-        return self.run_simulation(df, target_count=item_count)
-
     def forecast_backlog(
         self, df: pd.DataFrame, backlog_size: float
     ) -> Tuple[List[float], List[datetime]]:
