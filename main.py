@@ -1,8 +1,6 @@
 import configparser
 import logging
 from typing import List, Dict, Set, Tuple
-from collections import defaultdict
-import json
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -149,14 +147,7 @@ def main():
         iqr_multiplier = float(input("Enter the IQR multiplier for outlier detection (default is 1.5): ") or 1.5)
         tickets, removed_outliers = remove_outliers(tickets, iqr_multiplier)
         print(f"\nRemoved {len(removed_outliers)} outliers.")
-    
-    # Optionally, you can save the removed outliers to a file for further analysis
-   #  if removed_outliers:
-        # outlier_file = "removed_outliers.json"
-        # with open(outlier_file, "w") as f:
-            # json.dump(removed_outliers, f, default=str, indent=2)
-        # print(f"Removed outliers have been saved to {outlier_file}")
-    
+
     tickets = jira_manager.backfill_story_points(tickets)
     
     combine_statuses = input("Do you want to see combined cycle time for specific statuses? (y/n): ").lower() == 'y'
