@@ -144,7 +144,11 @@ def main():
 
     remove_outliers_choice = input("Do you want to remove outliers from the data? (y/n): ").lower() == 'y'
     if remove_outliers_choice:
-        iqr_multiplier = float(input("Enter the IQR multiplier for outlier detection (default is 1.5): ") or 1.5)
+        try:
+            iqr_multiplier = float(input("Enter the IQR multiplier for outlier detection (default is 1.5): ") or 1.5)
+        except ValueError:
+            print("Invalid input. Using default value of 1.5.")
+            iqr_multiplier = 1.5
         tickets, removed_outliers = remove_outliers(tickets, iqr_multiplier)
         print(f"\nRemoved {len(removed_outliers)} outliers.")
 
@@ -209,7 +213,11 @@ def forecast_completion_time(forecaster: MonteCarloForecaster, df_items: pd.Data
     df = df_points if forecast_points else df_items
     unit = "story points" if forecast_points else "items"
     
-    target = float(input(f"Enter the number of {unit} to complete: "))
+    try:
+        target = float(input(f"Enter the number of {unit} to complete: "))
+    except ValueError:
+        print("Invalid input. Please enter a number.")
+        return
     days_to_target = forecaster.run_simulation(df, target_count=target)
     
     print(f"\nEstimated days to complete {target:.0f} {unit}:")
@@ -236,9 +244,11 @@ def forecast_backlog_completion(jira_manager: JiraDataManager, forecaster: Monte
 
     unresolved_count = story_point_sum if forecast_points else item_count
 
-    
-    
-    inflation = float(input(f"Enter the number of additional {unit} expected (default 0): ") or 0)
+    try:
+        inflation = float(input(f"Enter the number of additional {unit} expected (default 0): ") or 0)
+    except ValueError:
+        print("Invalid input. Using default value of 0.")
+        inflation = 0
     total = unresolved_count + inflation
 
     logger.info(f"Forecasting completion time for {total:.2f} {unit}:")
