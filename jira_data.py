@@ -109,47 +109,47 @@ class JiraDataManager:
         return processed_issues
 
     def calculate_cycle_times(self, changelog: List[Dict]) -> Tuple[Dict[str, timedelta], int]:
-            status_changes = []
-            current_status = None
-            backlog_to_progress_count = 0
+        status_changes = []
+        current_status = None
+        backlog_to_progress_count = 0
 
-            for history in changelog:
-                for item in history["items"]:
-                    if item["field"] == "status":
-                        timestamp = pd.to_datetime(history["created"]).tz_convert(pytz.UTC)
-                        from_status = item["fromString"]
-                        to_status = item["toString"]
-                        status_changes.append((timestamp, from_status, to_status))
+        for history in changelog:
+            for item in history["items"]:
+                if item["field"] == "status":
+                    timestamp = pd.to_datetime(history["created"]).tz_convert(pytz.UTC)
+                    from_status = item["fromString"]
+                    to_status = item["toString"]
+                    status_changes.append((timestamp, from_status, to_status))
 
-                        if from_status == "Backlog" and to_status == "In Progress":
-                            backlog_to_progress_count += 1
+                    if from_status == "Backlog" and to_status == "In Progress":
+                        backlog_to_progress_count += 1
 
-            status_changes.sort(key=lambda x: x[0])
+        status_changes.sort(key=lambda x: x[0])
 
-            cycle_times = {}
-            status_start_times = {}
+        cycle_times = {}
+        status_start_times = {}
 
-            for timestamp, from_status, to_status in status_changes:
-                if from_status in status_start_times:
-                    duration = timestamp - status_start_times[from_status]
-                    if from_status in cycle_times:
-                        cycle_times[from_status] += duration
-                    else:
-                        cycle_times[from_status] = duration
-                    del status_start_times[from_status]
-
-                status_start_times[to_status] = timestamp
-
-            # Add time for the current status
-            current_time = pd.Timestamp.now(tz=pytz.UTC)
-            for status, start_time in status_start_times.items():
-                duration = current_time - start_time
-                if status in cycle_times:
-                    cycle_times[status] += duration
+        for timestamp, from_status, to_status in status_changes:
+            if from_status in status_start_times:
+                duration = timestamp - status_start_times[from_status]
+                if from_status in cycle_times:
+                    cycle_times[from_status] += duration
                 else:
-                    cycle_times[status] = duration
+                    cycle_times[from_status] = duration
+                del status_start_times[from_status]
 
-            return cycle_times, backlog_to_progress_count
+            status_start_times[to_status] = timestamp
+
+        # Add time for the current status
+        current_time = pd.Timestamp.now(tz=pytz.UTC)
+        for status, start_time in status_start_times.items():
+            duration = current_time - start_time
+            if status in cycle_times:
+                cycle_times[status] += duration
+            else:
+                cycle_times[status] = duration
+
+        return cycle_times, backlog_to_progress_count
 
     def get_unresolved_count(self, filter_id: str) -> Tuple[int, float]:
        url = f"{self.base_url}/rest/api/2/search"
