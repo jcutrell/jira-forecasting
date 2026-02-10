@@ -1,6 +1,4 @@
-import configparser
 from requests.exceptions import RequestException
-import concurrent.futures
 from typing import List, Tuple, Optional, Dict
 import logging
 import pytz
@@ -12,18 +10,13 @@ from requests.auth import HTTPBasicAuth
 
 logger = logging.getLogger(__name__)
 
-def load_config() -> configparser.ConfigParser:
-    config = configparser.ConfigParser()
-    config.read("config.ini")
-    return config
 
 class JiraDataManager:
-    def __init__(self, email: str, api_key: str, done_status: str = "Done"):
-        self.config = load_config()
+    def __init__(self, email: str, api_key: str, base_url: str, done_status: str = "Done"):
         self.email = email
         self.api_key = api_key
         self.auth = HTTPBasicAuth(email, api_key)
-        self.base_url = self.config['Jira']['base_url']
+        self.base_url = base_url
         self.done_status = done_status
 
     def get_filter_list(self) -> List[Tuple[str, str]]:

@@ -131,7 +131,7 @@ def main():
     config = load_config()
     
     done_status = input("Enter the status to consider as 'Done' (default is 'Done'): ").strip() or "Done"
-    jira_manager = JiraDataManager(config["Jira"]["email"], config["Jira"]["api_key"], done_status)
+    jira_manager = JiraDataManager(config["Jira"]["email"], config["Jira"]["api_key"], config["Jira"]["base_url"], done_status)
     jira_stats = JiraStatistics(jira_manager)
     forecaster = MonteCarloForecaster()
 
