@@ -1,6 +1,6 @@
 import logging
 from datetime import timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -196,38 +196,6 @@ class JiraDataManager:
             start_at += len(issues)
 
         return item_count, story_point_sum
-
-    def get_story_points(self, filter_id: str) -> List[Optional[float]]:
-        url = f"{self.base_url}/rest/api/2/search"
-        headers = {"Content-Type": "application/json"}
-        params = {
-            "jql": f"filter={filter_id} AND resolution IS EMPTY",
-            "fields": self.STORY_POINTS_FIELD,
-            "maxResults": 1000,
-        }
-
-        story_points = []
-        start_at = 0
-
-        while True:
-            params["startAt"] = start_at
-            response = requests.get(url, headers=headers, params=params, auth=self.auth)
-
-            if response.status_code != 200:
-                logger.error(f"Error fetching story points: {response.status_code}")
-                return []
-
-            data = response.json()
-            issues = data["issues"]
-
-            story_points.extend([issue["fields"].get(self.STORY_POINTS_FIELD) for issue in issues])
-
-            if len(issues) < 1000:
-                break
-
-            start_at += len(issues)
-
-        return story_points
 
     def backfill_story_points(self, tickets: List[dict]) -> List[dict]:
         valid_points = [

@@ -65,11 +65,11 @@ class TestRunSimulation:
         np.testing.assert_array_equal(result1, result2)
 
     def test_all_zeros_with_target_count_raises(self):
-        """If no work is ever done, division by zero in num_days estimation."""
+        """If no work is ever done, raise a clear error."""
         np.random.seed(42)
         forecaster = MonteCarloForecaster(num_simulations=100)
         df = _make_df([0, 0, 0, 0])
-        with pytest.raises(OverflowError):
+        with pytest.raises(ValueError, match="zero historical throughput"):
             forecaster.run_simulation(df, target_count=10)
 
 

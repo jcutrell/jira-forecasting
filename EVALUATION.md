@@ -103,11 +103,11 @@ No `.flake8`, `ruff.toml`, black config, or pre-commit hooks.
 | 1 | Duplicate `get_ticket_range` | **Fixed** -- removed duplicate |
 | 2 | Duplicate/broken `get_correlations` | **Fixed** -- rewrote to use `cycle_times` dict, removed duplicate from jira_data.py |
 | 3 | Missing `combined_cycle_times` key + missing `calculate_combined_cycle_time` method | **Fixed** -- added static method to JiraStatistics, added key to defaultdict |
-| 4 | Broken visualization column names | **Fixed** -- matched to `prepare_data` output |
+| 4 | Broken visualization column names | **Fixed** -- file removed (never imported anywhere) |
 | 5 | No tests | **Fixed** -- 50 tests across 3 test files |
 | 6 | No `pyproject.toml` | **Fixed** -- added with pinned deps, Python >=3.9, pytest/ruff dev deps |
 | 7 | Unpinned dependencies | **Fixed** -- pinned in requirements.txt, removed unused scipy, added missing pytz |
-| 8 | No CI/CD | **Not done** -- deferred until tests are verified on a real Jira instance |
+| 8 | No CI/CD | **Fixed** -- GitHub Actions workflow runs lint + tests on Python 3.9/3.11/3.12 |
 | 9 | Hardcoded custom field IDs | **Fixed** -- extracted to class constants on JiraDataManager |
 | 10 | Duplicate `load_config()` | **Fixed** -- consolidated, base_url now passed explicitly |
 | 11 | Inconsistent config handling | **Fixed** -- all config values passed as constructor params |
@@ -119,3 +119,11 @@ No `.flake8`, `ruff.toml`, black config, or pre-commit hooks.
 | 17 | Inconsistent indentation | **Fixed** -- normalized to 4-space |
 | 18 | Commented-out code | **Fixed** -- removed |
 | 19 | No linting config | **Fixed** -- ruff configured, codebase formatted, all checks pass |
+
+### Additional fixes (beyond original 19)
+
+| Issue | Status |
+|-------|--------|
+| Division by zero in `run_simulation` with all-zero throughput | **Fixed** -- raises clear `ValueError` instead of `OverflowError` |
+| `get_story_points` method never called | **Fixed** -- removed dead method from `JiraDataManager` |
+| `visualization_utils.py` never imported | **Fixed** -- removed unused module |

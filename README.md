@@ -76,7 +76,6 @@ main.py                  # CLI entry point and menu system
 jira_data.py             # Jira API client and data processing
 jira_statistics.py       # Statistical analysis and reporting
 forecasting.py           # Monte Carlo simulation engine
-visualization_utils.py   # Matplotlib plotting utilities
 tests/                   # Test suite
 config.ini.example       # Configuration template
 ```

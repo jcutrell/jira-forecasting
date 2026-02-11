@@ -16,7 +16,10 @@ class MonteCarloForecaster:
             raise ValueError("Either num_days or target_count must be specified")
 
         if num_days is None:
-            num_days = int(2 * target_count / np.mean(completed_per_day))
+            mean_completed = np.mean(completed_per_day)
+            if mean_completed == 0:
+                raise ValueError("Cannot forecast target_count with zero historical throughput")
+            num_days = int(2 * target_count / mean_completed)
 
         simulations = np.random.choice(completed_per_day, size=(self.num_simulations, num_days))
         simulations = np.cumsum(simulations, axis=1)
